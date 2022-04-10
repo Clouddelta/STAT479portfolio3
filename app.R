@@ -109,7 +109,7 @@ country=covid_data2%>%
 coviddate0=covid_data2$Date_reported
 
 ui <- navbarPage('Comparison',
-                 tabPanel('ss',
+                 tabPanel('Covid around the world',
                           fluidPage(
                    titlePanel('Covid new cases around the world'),
                    h2("Note: Grey means no data", style = "height: 50px; width: 100%; font-size: 20px;"),
@@ -170,7 +170,7 @@ server <- function(input, output, session) {
                             labs(x="", y="")+
                             theme(panel.grid=element_blank(), panel.border=element_blank())+ 
                             theme(axis.ticks=element_blank(), axis.text=element_blank())+
-                            theme(legend.position="top"))
+                            theme(legend.position="none"))
   
   selectedcovid1=reactive({covid_data2%>%filter(Country%in%input$cty1&
                                                   Date_reported>=input$dateRange0[1]&
