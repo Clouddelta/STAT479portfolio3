@@ -1,22 +1,14 @@
-library(readr)
+library(DT)
 library(ggplot2)
-library(tidyverse)
-library(ggrepel)
-library(ggforce)
-library(ggridges)
-library(readr)
-library(scales)
-library(ggpmisc)
+library(hrbrthemes)
 library(lubridate)
-library(tsibbledata)
-library(zoo)
-library(grid)
 library(patchwork)
 library(plotly)
-library(viridis)
-library(hrbrthemes)
+library(scales)
+library(tidyverse)
 library(tsibble)
-library(DT)
+library(viridis)
+
 Sys.setlocale("LC_TIME", "English")  
 
 equal_breaks <- function(n = 3, s = 0.5,m=100, ...){
@@ -113,21 +105,31 @@ ui <- navbarPage('Comparison',
                           fluidPage(
                    titlePanel('Covid new cases around the world'),
                    h2("Note: Grey means no data", style = "height: 50px; width: 100%; font-size: 20px;"),
-                   dateRangeInput('dateRange',
-                                  label = 'Date',
-                                  start = '2021-11-15', end = '2021-12-15'
-                   ),
+                   selectInput('timeperiod',
+                               'Select a Time Period:',
+                               choices=c('Break Out(Early 2020)',
+                                        ' Delta(Late 2020)',
+                                        'Omicron(Late 2021)')),
+#                   dateRangeInput('dateRange',
+#                                  label = 'Date',
+#                                  start = '2021-11-15', end = '2021-12-15'
+#                  ),  #### not use
+                   textOutput('pp'),
                    plotOutput('map'),
                    DTOutput('table')           
                  )),
                  tabPanel('Among countries',
                           fluidPage(
-                            selectInput('cty1','Country(sorted by cummulated cases)',choices=country,
-                                        selected=c('Canada','The United Kingdom','United States of America'),
-                                        multiple = TRUE),
-                            dateRangeInput('dateRange0',
-                                           label = 'Date',
-                                           start = min(coviddate), end = max(coviddate)
+                            fluidRow(
+                              column(6,
+                                     selectInput('cty1','Country(sorted by cummulated cases)',choices=country,
+                                                 selected=c('Canada','The United Kingdom','United States of America'),
+                                                 multiple = TRUE)),
+                              column(6,
+                                     dateRangeInput('dateRange0',
+                                                    label = 'Date',
+                                                    start = min(coviddate), end = max(coviddate)
+                                     ))
                             ),
                             DTOutput('table3'),
                             plotOutput('p1'),
@@ -137,7 +139,7 @@ ui <- navbarPage('Comparison',
                  tabPanel('Among seasons(one country)',
                           fluidPage(
                             selectInput('cty2','Country(sorted by cummulated cases)',choices=country,
-                                        selected='Canada'),
+                                        selected='The United Kingdom'),
                             plotlyOutput('p2'),
                             DTOutput("table2")
                           )
@@ -147,30 +149,37 @@ ui <- navbarPage('Comparison',
 
 
 server <- function(input, output, session) {
-  world1=reactive({left_join(world,(covid_data11%>%
-                              filter(Date_reported>=input$dateRange[1]&
-                                       Date_reported<=input$dateRange[2])%>%
-                              group_by(Country)%>%
-                              summarise(total_new_cases=sum(New_cases))),
-                     by=c('region'='Country'))
+  observe({date0=switch(input$timeperiod,
+                               'Break Out(Early 2020)'=c('2020-01-10','2020-08-30'),
+                               ' Delta(Late 2020)'=c('2020-09-01','2020-12-30'),
+                               'Omicron(Late 2021)'=c('2021-09-01','2022-04-01'))
+          output$pp=renderText({paste('Date range is from',date0[1],'to',date0[2])})
+          world1=left_join(world,(covid_data11%>%
+                                              filter(Date_reported>=date0[1]&
+                                                       Date_reported<=date0[2])%>%
+                                              group_by(Country)%>%
+                                              summarise(total_new_cases=sum(New_cases))),
+                                     by=c('region'='Country'))
+          output$table=renderDT(world1)
+          output$map=renderPlot(ggplot(world1)+
+                                  geom_map(data=world,map=world,
+                                           aes(long, lat, map_id = region),
+                                           color = "white",
+                                           fill = "gray100",
+                                           size = 0.1)+
+                                  geom_map(map = world, 
+                                           aes(map_id = region, fill = total_new_cases), 
+                                           size=0.25)+
+                                  scale_fill_gradient(
+                                    low="#fff7bc", high="#cc4c02",guide = "colourbar", 
+                                    name="New cases counts",na.value="grey90")+ 
+                                  expand_limits(x = world$long, y = world$lat)+ 
+                                  labs(x="", y="")+
+                                  theme(panel.grid=element_blank(), panel.border=element_blank())+ 
+                                  theme(axis.ticks=element_blank(), axis.text=element_blank()))
+  
   })
-  output$table=renderDT(world1())
-  output$map=renderPlot(ggplot(world1())+
-                            geom_map(data=world,map=world,
-                                     aes(long, lat, map_id = region),
-                                     color = "white",
-                                     fill = "lightgray",
-                                     size = 0.1)+
-                            geom_map(map = world, 
-                                     aes(map_id = region, fill = total_new_cases), 
-                                     size=0.25)+
-                            scale_fill_gradient(
-                              low="#fff7bc", high="#cc4c02", name="New cases counts")+ 
-                            expand_limits(x = world$long, y = world$lat)+ 
-                            labs(x="", y="")+
-                            theme(panel.grid=element_blank(), panel.border=element_blank())+ 
-                            theme(axis.ticks=element_blank(), axis.text=element_blank())+
-                            theme(legend.position="none"))
+
   
   selectedcovid1=reactive({covid_data2%>%filter(Country%in%input$cty1&
                                                   Date_reported>=input$dateRange0[1]&
@@ -183,9 +192,9 @@ server <- function(input, output, session) {
   output$p2=renderPlotly(plotseasons(selectedcovid2()))
   output$table3=renderDT(selectedcovid1()%>%
                            group_by(Country)%>%
-                           summarise(casemean=mean(New_cases),
-                                     deathmean=mean(New_deaths))%>%
-                           arrange(casemean))
+                           summarise(avg_case=mean(New_cases),
+                                     avg_death=mean(New_deaths))%>%
+                           arrange(avg_case))
   
   
 }
